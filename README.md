@@ -1,4 +1,4 @@
-# **JO**int **R**apid **D**NA **A**nalysis of **N**anoparticles (JORDAN) Data Tools
+# *JO*int *R*apid *D*NA *A*nalysis of *N*anoparticles (JORDAN) Data Tools
 
 Contents of this directory and all supporting documentation \
 Copyright (c) Christopher M. Monaco, 2016-2018
@@ -26,7 +26,7 @@ For more information on each tool or to see how they work, see the READMEs locat
 These tools were used to generate experimental data and results for the following publications:
 
 - [High throughput in vivo functional nanoparticle screening identifies nanoparticles for RNA delivery](). TBA.
-- [A Direct Comparison of in Vitro and in Vivo Nucleic Acid Delivery Mediated by Hundreds of Nanoparticles Reveals a Weak Correlation](https://pubs.acs.org/doi/10.1021/acs.nanolett.8b00432). Kalina Paunovska, Cory D. Sago, Christopher M. Monaco, William H. Hudson, Marielena Gamboa Castro, Tobi G. Rudoltz, Sujay Kalathoor, Daryll A. Vanover, Philip J. Santangelo, Rafi Ahmed, Anton V. Bryksin, and James E. Dahlman. __Nano Letters__. DOI: 10.1021/acs.nanolett.8b00432
+- [A Direct Comparison of in Vitro and in Vivo Nucleic Acid Delivery Mediated by Hundreds of Nanoparticles Reveals a Weak Correlation](https://pubs.acs.org/doi/10.1021/acs.nanolett.8b00432). Kalina Paunovska, Cory D. Sago, Christopher M. Monaco, William H. Hudson, Marielena Gamboa Castro, Tobi G. Rudoltz, Sujay Kalathoor, Daryll A. Vanover, Philip J. Santangelo, Rafi Ahmed, Anton V. Bryksin, and James E. Dahlman. *Nano Letters*. DOI: 10.1021/acs.nanolett.8b00432
 
 ---
 
