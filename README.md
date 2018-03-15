@@ -1,4 +1,4 @@
-# __JO__int __R__apid __D__NA __A__nalysis of __N__anoparticles (JORDAN) Data Tools
+# __JO__ int __R__apid __D__NA __A__nalysis of __N__anoparticles (JORDAN) Data Tools
 
 Contents of this directory and all supporting documentation \
 Copyright (c) Christopher M. Monaco, 2016-2018
