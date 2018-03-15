@@ -1,0 +1,64 @@
+---
+title: "Run-Away Barcode Identification for Example Experiment"
+date: "Jan. 27, 2018"
+authhor: "C.M. Monaco"
+output:
+  html_notebook:
+    code_folding: hide
+---
+
+This document contains post-normalization quality control steps for identification of possible run-away barcode sequences.
+
+# How to Use This Script
+
+This script is meant to be run on normalized count data prior to averaging to identify any possible run-away barcodes. The script should be edited where indicated by an `## EDIT ##`.
+
+```{r}
+## EDIT ##
+# Begin by reading in normalized counts from a CSV file.
+counts <- data.frame(read.table("norm_counts_output/norm_counts.csv", # <- change path to location of norm
+                                header = TRUE,
+                                sep = ",",
+                                row.names = 1))
+```
+
+# Multigroup Barcode Outlier Identification
+
+## Single Linkage Hierarchical Clustering
+
+Outliers will appear as outgroups in the clustering dendrogram.
+
+```{r, fig.width=10}
+d <- dist(counts, method = "euclidean")
+h <- hclust(d, method = "single")
+plot(h, hang = -1, cex=0.5)
+```
+
+## Principle Component Analysis
+
+Outliers will appear as clusters seperated from the main clustering of Barcodes.
+
+```{r}
+counts.pca <- prcomp(counts, center = TRUE)
+
+library(ggfortify)
+autoplot(counts.pca, label = TRUE, label.size = 3)
+```
+
+## Outlier Heatmaps (No Clustering)
+
+This uncluseterd heatmap will show evidence of a run-way by showing any barcodes with disproportionaly hight number of reads across nearly all samples.
+
+```{r, fig.width=10}
+library(ComplexHeatmap)
+library(circlize)
+Heatmap(counts,
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        col = colorRamp2(c(0,2.5,5), c("red","white","blue")),
+        column_names_gp = gpar(cex = 0.5),
+        row_names_gp = gpar(cex = 0.5)
+        )
+```
+
+Based on Cluster Analysis and PCA, Barcodes `TGATATTG` and `ACGTCGAA` represent possible run-aways.

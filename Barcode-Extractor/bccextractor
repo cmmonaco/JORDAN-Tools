@@ -1,0 +1,259 @@
+#!/usr/bin/env python
+"""
+"" bccextractor: Barcode Counts Extractor for JORDAN Gen 1
+"" Extracts barcodes counts from FastQ files.
+"" v0.6.0
+""
+"" Written by Christopher M. Monaco
+""
+"" bccextactor and all supporting documentation Copyright (c) Dahlman Lab, 2016-2018.
+""---------------------------------------------------------------------------------------- 
+""
+"" Description:
+""   bccextract performs batch filtering and extraction of barcode sequence counts
+""   from FastQ files. The tool returns a CSV file of counts per sample compatible with 
+""   most standard bioinformatics packages.
+""
+"" usage: bccextractor [-h] [-v] -l <lib.txt> -i <indir> -o <out.csv> [-s <int>] [-b <int>] [-p <str>] [-t <str>]
+""
+"" Required Arguments:
+""   -l, --lib	        Experimental barcode library file. Should be tab-delimited text.
+""   -i, --inDir	Input directory containing FastQ files to be processed.
+""   -o, --outFile	Output file name. Should be contains CSV file extension.
+""
+"" Optional Arguments:
+""   -p, --prefix	File name prefix to drop in output file sample names.
+""   -s, --start        Barcode start location (nucleotide number starting from 5' end as 1). Default = 55.
+""   -b, --length       Barode length. Default = 8.
+""   -t, --thread       Number of processor threads to use during execution. Default = 8.
+""
+"" Information Arguments:
+""   -v, --version     Show program's version number and exit.
+""   -h, --help	       Show this help message and exit.
+""
+""----------------------------------------------------------------------------------------
+""
+"" New in version 0.6.0:
+""  - Plots of mean quality score within the barcode region and run stats are output
+""    along with counts CSV and log file.
+""
+"" New in version 0.5.0:
+""  - Average Quality Score in barcode region is captured and reported in log file.
+""  - Barcode start position and length are made to be optional arguments with defaults
+""    corresponding to current barcode design (-s 55 -b 8).
+""  - Thread number is made to be an optional argument with a default of 8 threads.
+""
+"" TODO:
+""  - library file can now contain more infromation than just barcodes. As long as
+""    barcode sequences are in the first column of the tab-delimited file, additional
+""    information can be added to describe what each barcode represents.
+"""
+
+import argparse, gzip, os, csv, re, time
+import pandas as pd
+import numpy as np
+import matplotlib as mlp
+import matplotlib.pyplot as plt
+from multiprocessing import Pool
+from multiprocessing import Pool as ThreadPool
+
+def parseInput():
+	"""Parse command line argument inputs.
+	Gets command line inputs and initializes variables.
+	"""
+	
+	global fileList, libFile, bcLen, bcStart, outFile, prefix, threadNum
+	fileList = []
+	
+	parser = argparse.ArgumentParser(description="Barcode Counts Extraction Tool for Dahlman Lab JORDAN System Gen 1",
+									 prog="bccextractor",
+									 formatter_class=argparse.RawTextHelpFormatter,
+									 add_help=False,
+									 usage="%(prog)s [-h] [-v] -l <lib.txt> -i <indir> -o <out.csv> [-s <int>] [-b <int>] [-p <str>] [-t <int>]")
+	
+	req = parser.add_argument_group(title="Required Arguments",
+					description=("-l, --lib         Experimental barcode library file. Should be tab-delimited text.\n"
+						     "-i, --inDir       Input directory containing FastQ files to be processed.\n"
+						     "-o, --outFile     Output file name. Should be contains CSV file extension."))
+
+	req.add_argument("-l", "--lib", help=argparse.SUPPRESS,required=True, dest="libFile")
+	req.add_argument("-o", "--outFile", help=argparse.SUPPRESS,required=True, dest="outFile")
+	req.add_argument("-i", "--inDir", help=argparse.SUPPRESS,required=True, dest="inDir")
+	
+	opt = parser.add_argument_group(title="Optional Arguments",
+				        description=("-p, --prefix      File name prefix to drop in output file sample names.\n"
+						     "-s, --start       Barcode start location (nucleotide number starting at 5' end from 1). Defualt=55.\n"
+						     "-b, --length      Barcode length. Default=8.\n"
+						     "-t, --thread      Number of porcessor threads used during execution. Default=8."))	
+
+	opt.add_argument("-p", "--prefix", help=argparse.SUPPRESS, dest="prefix")
+	opt.add_argument("-b", "--length", help=argparse.SUPPRESS, dest="bcLen", type=int, default=8)
+	opt.add_argument("-s", "--start", help=argparse.SUPPRESS, dest="bcStart", type=int, default=55)
+	opt.add_argument("-t", "--thread", help=argparse.SUPPRESS, dest="threadNum", type=int, default=8)
+	
+	info = parser.add_argument_group(title="Information Arguments",
+					 description=("-v, --version    Show program's version number and exit.\n"
+						      "-h, --help       Show this help message and exit."))
+	
+	info.add_argument("-v", "--version", action="version", version="%(prog)s 0.6.0", help=argparse.SUPPRESS)
+	info.add_argument("-h", "--help", action="help", help=argparse.SUPPRESS)
+	
+	args = parser.parse_args()
+	
+	#Create list of all FASTQ files in specified directories and subdirectories
+	for dirpath, dirnames, filenames in os.walk(args.inDir):
+		for filename in [f for f in filenames if f.endswith(".fastq.gz")]:	
+			fileList.append(os.path.join(dirpath, filename))
+	
+	#Assign argument values to global variables
+	libFile = args.libFile
+	bcLen = args.bcLen
+	bcStart = args.bcStart
+	outFile = args.outFile
+	prefix = args.prefix
+	threadNum = args.threadNum
+	
+def reverseComp(seq):
+	"""Find reverse complement of DNA sequence."""
+	
+	complement = {"A" : "T", "C" : "G", "T" : "A", "G" : "C", "N" : "N"}
+	letters = list(seq)
+	letters = [complement[base] for base in letters]
+	letters.reverse()
+	return "".join(letters)
+	
+def genLogPlots(log):
+	"""Creates Plots of data saved in log file"""
+	plt.style.use('classic')
+
+	#Generate plot of mean quality score in barcode region
+	qScoreFig = plt.figure(figsize=(18,8))
+
+	plt.plot(list(log.iloc[:,0]), linestyle='-', color='k', marker='o', linewidth = 2)
+	plt.xticks(np.arange(len(list(log.index))), list(log.index), rotation = 'vertical', ha = 'left', fontsize = 8)
+	plt.ylim(0,40)
+	plt.xlim(-1, len(list(log.index))+1)
+	plt.axhspan(0,20, facecolor = '#e6c3c3', ec = 'none')
+	plt.axhspan(20, 28, facecolor = '#e6dcc3', ec = 'none')
+	plt.axhspan(28, 40, facecolor = '#c3e6c3', ec = 'none')
+
+	plt.title("Mean Q-Score in Barcode Region")
+	plt.ylabel("Phred Score")
+	qScoreFig.savefig(os.path.splitext(outFile)[0] + '_quality.pdf', bbox_inches='tight')
+
+	#Barcodes ID Plots
+	bcFig, ax1 = plt.subplots(figsize=(18,8))
+	ax1.plot(list(log.iloc[:,1]), 'b--', linewidth = 2)
+	ax1.set_ylim(0,100)
+	ax1.set_ylabel("Percent Barcodes Identified", color='b')
+	ax1.tick_params('y', color = 'blue')
+
+	ax2 = ax1.twinx()
+	ax2.plot(list(log.iloc[:,2]), 'r-', label="Number of BCs Identified", linewidth = 2) #barcodes identified
+	ax2.plot(list(log.iloc[:,3]), 'g-', label="Number of Sequences Processed", linewidth = 2) #total sequences
+	ax2.set_ylabel("Sequence Counts")
+	ax2.legend(bbox_to_anchor=(1,1), loc = 4, ncol = 2)
+	ax2.set_yscale('log')
+
+	ax1.set_xlim(-1, len(list(log.index))+1)
+	ax1.set_xticks(np.arange(len(list(log.index))))
+	ax1.set_xticklabels(list(log.index), rotation = 'vertical', ha = 'left', fontsize = 8)
+
+	bcFig.savefig(os.path.splitext(outFile)[0] + '_stats.pdf', bbox_inches='tight')
+
+def getCounts(file):
+	"""Extracts barcode counts from a provided FASTQ file."""
+	
+	global bc_list
+	counts = {}
+	
+	for bc in range(0,len(bc_list)):
+		counts[bc_list[bc]] = 0
+
+       	foundBCs = 0
+	seqsProcessed = 0
+	avgQSum = 0
+
+	# Open files for reading and writing corresponding to the current input file being processed.
+	fi = gzip.open(file, 'r')
+	print("Processing " + os.path.basename(file))
+
+	# Step through current file line-by-line.
+	lineNum = 1
+	fileNum = 0
+
+	for line in fi:
+		if(lineNum == 2):
+			seqsProcessed += 1
+		
+			seq = line.strip()
+		
+			barcode = seq[bcStart - 1:(bcStart-1) + bcLen]
+		
+			if(barcode):
+				if(barcode in bc_list):						
+					counts[barcode] += 1
+					foundBCs += 1
+		
+			lineNum += 1
+		
+		elif(lineNum == 4):
+			#Capture Q-score in barcode region
+			qLine = line.strip()
+
+			qString = qLine[bcStart - 1:(bcStart-1) + bcLen]
+			qAscii = map(ord, qString)
+			qScore = [x - 33 for x in qAscii]
+			avgQSum += float(sum(qScore)) / float(bcLen)			
+
+			lineNum = 1
+		else:
+			lineNum += 1
+			
+	# Convert current count library into Pandas DataFrame
+	sampleName = re.search('^[^_]+(?=_)', os.path.basename(file)).group(0)
+	if(prefix != None):
+		sampleName = sampleName.replace(prefix, "")
+
+	countsFrame = pd.DataFrame(counts, index = [sampleName])
+	logFrame = pd.DataFrame({"Percent Barcodes Identified" : (float(foundBCs) / float(seqsProcessed))*100, "Total Seqs Processed" : seqsProcessed, "Total Barcodes Identified" : foundBCs, "Average Q-Score in Barcode Region" : (avgQSum / seqsProcessed)}, index = [sampleName])
+	
+	# Close current input and output files.		
+	fi.close()
+	
+	return countsFrame, logFrame
+
+	
+if __name__ == "__main__":
+	# Get command line inputs.
+	parseInput()
+
+	#Get a processing start time
+	startTime = time.time()
+	
+	# Open library file and create a list object of its contents.
+	with open(libFile, 'rU') as lib:
+		lib = list(csv.reader(lib, delimiter='\t'))
+
+	#Create List of barcodes from library file
+	bc_list = [None]*len(lib)
+	for i in range(0, len(lib)):
+		bc_list[i] = lib[i][1]
+
+	pool = ThreadPool(threadNum) #creates a pool of workers defaulting to number of cores available on machine.
+
+	#Map files in list to threads 
+	countsResults, logResults = zip(*pool.map(getCounts, fileList))
+	pool.close()
+	pool.join()
+
+	rawCounts = pd.concat(countsResults)
+	logData = pd.concat(logResults)
+		
+	print("Writing to output file...")
+	rawCounts = rawCounts.transpose()
+	rawCounts.to_csv(outFile)
+	logData = logData.round(2)
+	logData.to_csv(os.path.splitext(outFile)[0] + ".log", sep = "\t")
+	genLogPlots(logData)
+	print("Completed in %s seconds" % (time.time() - startTime))

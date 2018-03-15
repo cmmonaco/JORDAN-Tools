@@ -1,0 +1,87 @@
+---
+title: "Sample Replicate Correlation Studies"
+date: "Jan. 27, 2018"
+authhor: "C.M. Monaco"
+output:
+  html_notebook:
+    code_folding: hide
+---
+
+This document contains post-normalization quality control steps for identification of low correlation bio-replicates using pairwise Pearson Correlation tests.
+
+# How to Use This Script
+
+This script is meant to be run on normalized count data prior to averaging to identify any possible bio-replicates that should be discarded. Currently this process is performed manually and each bio-replicate group must be coded for comparison. Once a standard naming convention for samples is established, this process can be automated. The script should be edited where indicated by an `## EDIT ##` and creating more groups can be performed by simply copying and pasting the plotting function calls.
+
+Outlying samples are indicated with red p-values on the generated plots.
+
+```{r}
+## EDIT ##
+# Begin by reading in normalized counts from a CSV file.
+counts <- data.frame(read.table("counts/norm_counts.csv", # <- change path to location of counts file
+                                header = TRUE,
+                                sep = ",",
+                                row.names = 1))
+```
+
+# Biological Replicate Pairwise Correlation Study
+
+Here, sets of bio-reps are pairwise correlated in order to find replicates that do not correlate well. Poorly correlated replicates should not be averaged into the final data set.
+
+```{r}
+## EDIT ##
+# Replicate Groupings
+# --------------------
+# Typically sample names in normalized counts file will be in
+# alphabetical order; meaning that some sort of grouping can be established
+# that can aid in quickly creating correlation plots. 
+# For example:
+# SA_1 | SA_2 | SA_3 | SA_4 | SB_1 | SB_2 ...
+# So here to capture group A we would use 1:4 and to capture group B we would use (1:4)*2
+# See included example to understand better. Alternatively, each sample can just be coded by name.
+gr <- 1:4
+
+## DO NOT EDIT THIS FUNCTION ##
+# performs the Pearson correlation test and prints results to plots.
+panel.cor <- function(x, y, digits = 2, cex.cor, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  # correlation coefficient
+  r <- cor(x, y, method = "pearson")
+  txt <- format(c(r, 0.123456789), digits = digits)[1]
+  txt <- paste("r= ", txt, sep = "")
+  text(0.5, 0.6, txt)
+  # p-value calculation
+  p <- cor.test(x, y)$p.value
+  txt2 <- format(c(p, 0.123456789), digits = digits)[1]
+  txt2 <- paste("p= ", txt2, sep = "")
+  if(p<0.01)
+  {
+    txt2 <- paste("p= ", "<0.01", sep = "")
+    text(0.5, 0.4, txt2)
+  }
+  else
+  {
+    text(0.5, 0.4, txt2, col = "red")
+  }
+}
+```
+
+## Replicate Group A
+
+```{r}
+## EDIT ##
+# This function creates the correlation plots. This section of code should be 
+# copied and pasted for each group.
+pairs(counts[,gr], upper.panel = panel.cor)
+```
+
+## Replicate Group B
+
+```{r}
+## EDIT ##
+# This function creates the correlation plots. This section of code should be 
+# copied and pasted for each group.
+pairs(counts[,gr*2], upper.panel = panel.cor)
+```

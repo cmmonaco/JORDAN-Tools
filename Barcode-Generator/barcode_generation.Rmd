@@ -1,0 +1,187 @@
+---
+title: "Barcode Generation"
+author: "C.M. Monaco"
+date: "May 26, 2017"
+output: html_notebook
+---
+
+The following script sections are used to generate barcode sequences with appropriate properties so that they have a good chance of successfully working with Illumina Next Gen Sequencers.
+
+# Barcode Generation Principles
+
+When designing barcode sequences, the following criteria must be taken into account:
+
+* Index sequences must be a minimum edit distance of three to guarantee low false-assignment rates of 1/10,000.
+* The sequence should not contain long streches of the same base to assure sequences can be differentiated from cluster artifacts.
+* Streches of bases illuminated with the same laser (red: A and C, green: G and T) whould be avoided.
+
+# The Script
+
+## Load Libraries
+
+This script requires two libraries
+
+1. `stringi` for easy string manipulation and generation of random strings
+2. `stringdist` used to compute the Levenstein edit distance between strings
+
+```{r}
+library(stringi)
+library(stringdist)
+```
+
+## Define the Barcode Generator Function
+
+This is the main function used for generating barcode sequences. It takes two arguments
+
+1. `n`: the number of barcode sequences to generate
+2. `bcLen`: the length of the each barcode sequence
+3. `existingBC`: optional, list of exisiting BCs to avoid generating repeats
+
+and returns a list of `n` barcodes. The function works by generating a random barcode sequence and the determining if the barcode sequence is meets the critera described above. If the criteria is met, the sequence is kept. If not, the sequence is discards and the cycle continues untils all `n` barcodes have been generated.
+
+It should be noted this method is extremely inefficient, but still works pretty well!
+
+```{r}
+barcode_generator <- function(n, bcLen, existingBC = NULL){
+  
+  stringList <- ""
+  
+  while(length(stringList) < n+1)
+  {
+    #generate a candiate string
+    candidate <- stri_rand_strings(1, bcLen, pattern = "[ATCG]")
+    
+    #check if candidate is a duplicate if existingBC is specified
+    if(!is.null(existingBC))
+    {
+      if(length(existingBC[existingBC == candidate]) > 0)
+      {
+        next
+      }
+    }
+    
+    #Avoid long stretches of similar base and same color 
+    if(stri_count_regex(candidate, "AAA") > 0 ||
+       stri_count_regex(candidate, "GGG") > 0 ||
+       stri_count_regex(candidate, "CCC") > 0 ||
+       stri_count_regex(candidate, "TTT") > 0 ||
+       stri_count_regex(candidate, "ACA") > 0 ||
+       stri_count_regex(candidate, "CAC") > 0 ||
+       stri_count_regex(candidate, "GTG") > 0 ||
+       stri_count_regex(candidate, "TGT") > 0)
+    {
+      next
+    }
+    
+    #check GC balance
+    #gcCont <- stri_count_regex(candidate, "[CG]") / bcLen
+    
+    #check for minium edit distance
+    strdist <- stringdist(candidate, stringList, method = "lv")
+    if(length(strdist[strdist < 3]) > 0)
+    {
+      next
+    }
+    
+    #print(candidate)
+    #print(gcCont)
+    
+    stringList <- c(stringList, candidate)
+  }
+  
+  return(stringList[2:length(stringList)])
+}
+```
+
+## Generating the Barcodes
+
+Dr. Dahlman is asking for 400 new barcodes that don't already exist in the 384 we currently have from IDT. To do this I must first read in the list of existing barcodes.
+
+```{r}
+#Read CSV File
+x <- read.table("../Dropbox/Dahlman Lab/List GT Primers and IDT orders/Barcodes/8nt_Barcoded_DL60/384 single indexes-updated-040416.csv", header = TRUE, sep = ",")
+
+#get list of [barcode] sequences removing blanks
+ebc <- as.array(x$Index[!(is.na(x$Index) | x$Index=="")])
+```
+
+Next, I will generate the barcodes using the `barcode_generator` function detailed above. I'm going to generate 480 sequences since this will nicely divide into five 96-well plates. Each barcode will be the standard 8-nt in length and I will want to avoild generating barcodesin our alreay existing set.
+
+```{r}
+my_new_bcs <- barcode_generator(96 * 5, 8, ebc)
+
+#Wirte newly generated barcodes to CSV
+write.csv(file = "Desktop/170526_barcodes.csv", my_new_bcs)
+```
+
+## Analysis of Generated Barcodes
+
+Now that he new barcodes have been generated, I want analyze them a little to ensure they are of good quality.
+
+### Position Composition
+
+First, I will analyze the base composition of all the gnerated sequences. Ideally, I want to see the maximum base individual base be around 25%. This will mean that bases are evenly distributed in the sequence. In additon, we shuold see the color channel composition be roughly 50% meaning the colors are evenly distributed.
+
+```{r}
+#Create empty data frame
+pos_dist <- data.frame(a=numeric(),
+                       t=numeric(),
+                       g=numeric(),
+                       c=numeric(),
+                       max_base=numeric(),
+                       max_channel=numeric()
+                       )
+
+for(i in 1:nchar(my_new_bcs[1]))
+{
+  a <- length(substr(my_new_bcs, i,i)[substr(my_new_bcs,i,i) == "A"])
+  t <- length(substr(my_new_bcs, i,i)[substr(my_new_bcs,i,i) == "T"])
+  g <- length(substr(my_new_bcs, i,i)[substr(my_new_bcs,i,i) == "G"])
+  c <- length(substr(my_new_bcs, i,i)[substr(my_new_bcs,i,i) == "C"])
+  
+  pos_dist[i, ] <- c(a,
+                     t,
+                     g,
+                     c,
+                     (max(a,t,g,c)/length(my_new_bcs))*100,
+                     (max(a+c, g+t)/length(my_new_bcs))*100
+                     )
+}
+
+print(pos_dist, digits = 2)
+```
+
+Looks pretty good considering that base distribution was not controlled for in the `barcode_generator` function. I may add something like that later on.
+
+### GC Content
+
+Just out of curiosity, I'll examine the CG content ditstribution of the newly generated barcode sequences.
+
+```{r}
+gc <- sapply(my_new_bcs, function(x) stri_count_regex(x, "[GC]") / nchar(x))
+
+hist(gc*100,
+     breaks = 8,
+     density = 25,
+     col = "blue",
+     xlab = "% GC Content",
+     main = "Barcode Percentage GC Distribution"
+     )
+text(90,125, sprintf("Mean: %0.2f%%",mean(gc*100)))
+text(91,115, sprintf("St. Dev: %0.2f%%",sd(gc*100)))
+```
+
+### Levenstein Edit Distance Analysis
+
+This is a quick analysis to visually show that the proper Levenstein edit distance between each of the newly generated barcodes is present. This heatmaps shows the edit distances. We should expect to see an edit distance of zero along the diagonal and nothing below three.
+
+```{r}
+Heatmap(as.matrix(stringdistmatrix(my_new_bcs, method = "lv")),
+        cluster_rows = FALSE, 
+        cluster_columns = FALSE,
+        show_row_names = FALSE,
+        show_column_names = FALSE,
+        col = c("blue","grey","red"),
+        name = "Edit Distance"
+        )
+```
