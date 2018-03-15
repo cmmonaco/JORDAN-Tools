@@ -1,4 +1,4 @@
-# __JO__ int __R__apid __D__NA __A__nalysis of __N__anoparticles (JORDAN) Data Tools
+# **JO**int **R**apid **D**NA **A**nalysis of **N**anoparticles (JORDAN) Data Tools
 
 Contents of this directory and all supporting documentation \
 Copyright (c) Christopher M. Monaco, 2016-2018
@@ -7,7 +7,7 @@ Copyright (c) Christopher M. Monaco, 2016-2018
 
 This repository serves as an archive of my work during completion of my M.S. in Bioinformatics from Georgia Tech from 2016-2018. The subdirectories contain custom tools and scripts written in R and Python that were used for data processing and analysis for the [Dalhman Lab's](http://dahlmanlab.org) JORDAN high-throughput nanoparticle characterization system.
 
-The tools in this repository are no longer maintained by me and I will not be offering any support for use of these tools. Up to date versions of the tools and protocol can be found on the [Dahlman Lab]((http://dahlmanlab.org) website. 
+The tools in this repository are no longer maintained by me and I will not be offering any support for use of these tools. Up to date versions of the tools and protocol can be found on the [Dahlman Lab](http://dahlmanlab.org) website. 
 
 ## Repository Contents
 
